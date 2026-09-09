@@ -1,0 +1,208 @@
+# whence is a single-package repository: this file is both the package manifest
+# and the one lint, type, test and coverage gate the package is held to. It was
+# extracted from the validia.dev uv workspace, where the same configuration sat
+# on a virtual root and covered several members; here every path is relative to
+# the repository root because the repository root *is* the package.
+
+[project]
+name = "whence"
+version = "1.0.0"
+description = "Typed configuration that remembers where it came from: layered loading with full provenance."
+readme = "README.md"
+requires-python = ">=3.12"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "izmailov-labs" }]
+keywords = ["configuration", "settings", "config", "env", "dotenv", "provenance"]
+classifiers = [
+  "Development Status :: 5 - Production/Stable",
+  "Intended Audience :: Developers",
+  "Intended Audience :: System Administrators",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+  "Topic :: System :: Systems Administration",
+  "Typing :: Typed",
+]
+# An empty list is the product claim, not a preference: the core loads env vars,
+# .env, TOML, JSON, .properties and XML on the standard library alone. YAML is
+# the single exception and lives behind an extra.
+dependencies = []
+
+[project.optional-dependencies]
+yaml = ["pyyaml>=6.0.2"]
+
+[project.scripts]
+whence = "whence.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/izmailov-labs/whence"
+Documentation = "https://izmailov-labs.github.io/whence/"
+Repository = "https://github.com/izmailov-labs/whence"
+Changelog = "https://github.com/izmailov-labs/whence/blob/main/CHANGELOG.md"
+Issues = "https://github.com/izmailov-labs/whence/issues"
+
+[build-system]
+requires = ["hatchling>=1.32"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/whence"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/", "tests/", "CHANGELOG.md", "README.md", "LICENSE"]
+
+# PEP 735 dependency groups. These are dev-only and are NOT published to PyPI
+# (unlike [project.optional-dependencies], which consumers would see as extras).
+[dependency-groups]
+dev = [
+  "mypy>=2.3.1",
+  "pre-commit>=4.6.2",
+  # Not a runtime dependency and not an extra: binding to a pydantic model is
+  # supported when the *application* already has pydantic. It lives here so mypy
+  # strict sees that import path, and so the binding tests actually run, without
+  # a blanket ignore_missing_imports.
+  "pydantic>=2.12,<3",
+  "pytest>=9.1.1",
+  "pytest-asyncio>=1.4",
+  "pytest-cov>=7.1",
+  # Not a runtime dependency: PyYAML is the optional `[yaml]` extra. It lives
+  # here as well so mypy strict sees the optional import path without a blanket
+  # ignore_missing_imports.
+  "pyyaml>=6.0.2",
+  "types-PyYAML>=6.0.12",
+  # Ruff has no 1.0 and does not follow semver below it: a minor bump can change
+  # which rules fire. Pinned exactly so lint results only change deliberately.
+  "ruff==0.16.6",
+]
+docs = [
+  "mkdocs-material>=9.7.7",
+  "mkdocstrings[python]>=1.0.6",
+]
+
+[tool.uv]
+default-groups = ["dev"]
+required-version = ">=0.12"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src"]
+
+[tool.ruff.lint]
+# Explicit select, never the defaults: ruff 0.16 grew its default set from 59 to
+# 413 rules, so relying on defaults means upgrades silently redefine the gate.
+select = [
+  "E", "F", "W",      # pycodestyle + pyflakes
+  "I",                # isort
+  "B",                # bugbear
+  "UP",               # pyupgrade
+  "SIM",              # simplify
+  "C4",               # comprehensions
+  "N",                # pep8-naming
+  "PERF",             # performance
+  "RUF",              # ruff-specific
+  "A",                # builtins
+  "RET",              # return
+  "PT",               # pytest style
+  "TID",              # tidy-imports
+  "PIE",              # misc
+  "ASYNC",            # flake8-async — blocking calls in async def, bad sleeps
+  "D",                # pydocstyle — docstrings are the docs site's source material
+  "S",                # bandit
+  "TC",               # type-checking imports
+  "PTH",              # pathlib over os.path
+  "T20",              # no stray print()
+]
+ignore = [
+  "E501",             # line length is the formatter's job, not the linter's
+  "TID252",           # relative imports are fine inside the package
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = [
+  "S101",             # assert is the point of a test
+  # Docstrings are the docs site's source material, but tests are not published:
+  # module, class, __init__ and dunder docstrings are noise on a test helper.
+  "D100", "D101", "D103", "D105", "D107",
+  "TID251",           # a test may drive an event loop; src/ stays synchronous
+  # A test owns its event loop, so blocking file I/O while arranging a
+  # fixture is not the latency bug these rules exist to catch.
+  "ASYNC230", "ASYNC240",
+]
+# The CLI is the one place that legitimately writes to stdout/stderr.
+"src/whence/cli.py" = ["T20"]
+# The runnable examples: printing is the point, and they are not published --
+# the sdist ships src/ and tests/ only. An example is an application, and an
+# application drives its own event loop, so the asyncio ban does not apply.
+"examples/*" = ["T20", "TID251"]
+# Config files are trusted input the operator wrote, and Expat >=2.4.1 bounds
+# entity amplification by default (verified: a billion-laughs document raises
+# ParseError). defusedxml's last release is 2021-03-08 and stops at py3.9.
+"src/whence/formats/xml.py" = ["S314"]
+
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+# Loading is synchronous by design: configuration is read once, before the
+# application runs, when there is no event loop for an `await` to yield to.
+# Tests and examples are exempt above; src/ is not.
+"asyncio".msg = "whence loads synchronously; there is no event loop at startup to await"
+
+[tool.ruff.lint.flake8-type-checking]
+# pydantic evaluates field annotations at class creation; without this, TC001-TC003
+# move field-type imports behind TYPE_CHECKING and the models fail to build.
+runtime-evaluated-base-classes = ["pydantic.BaseModel"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.mypy]
+python_version = "3.12"
+files = ["src", "tests", "examples"]
+strict = true
+warn_unreachable = true
+enable_error_code = [
+  "redundant-expr",
+  "possibly-undefined",
+  "truthy-bool",
+  "ignore-without-code",
+]
+# Deliberately NOT ignore_missing_imports: with no runtime dependencies, a
+# missing stub is real signal rather than noise.
+
+[tool.pytest]
+minversion = "9.1"
+# Arrays, not whitespace-separated strings — this is the native pytest 9 table,
+# not the legacy string-typed [tool.pytest.ini_options].
+addopts = [
+  "-ra", "--strict-markers", "--strict-config", "--import-mode=importlib",
+  "-m", "not container",
+]
+markers = [
+  "container: needs a real container mount; run with `make test-docker`",
+]
+testpaths = ["tests"]
+# importlib import mode leaves sys.path alone, so the suite exercises the
+# installed package rather than the source tree next to it.
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+
+[tool.coverage.run]
+source = ["src"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+fail_under = 90
+exclude_lines = [
+  "pragma: no cover",
+  "if TYPE_CHECKING:",
+  "raise NotImplementedError",
+  "@overload",
+]
