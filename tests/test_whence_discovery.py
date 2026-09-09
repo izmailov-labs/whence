@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 from whence import AmbiguousConfigError, ConfigError, Discovery, MissingConfigError
+from whence._platform import user_config_dirs
 
 
 def _write(root: Path, name: str, body: str = "a = 1\n") -> Path:
@@ -116,11 +117,25 @@ def test_search_parents_does_not_escape_the_boundary(tmp_path: Path) -> None:
 
 
 def test_step4_user_config_dir_is_searched(tmp_path: Path) -> None:
+    """The file has to exist, so this one runs on the platform it runs on.
+
+    Faking ``platform="linux"`` here would be a lie with real files behind it:
+    a Windows ``tmp_path`` starts with a drive letter, which is correctly *not*
+    absolute under POSIX flavour, so the fake platform would find nothing and
+    the test would be asserting the fake rather than the search. Which directory each
+    platform names is covered exhaustively through the seam in
+    ``test_whence_platform``; what is under test here is that step 4 looks in it
+    at all. Every home-defining variable is set so the environment suits
+    whichever platform is running.
+    """
     home = tmp_path / "home"
-    _write(home / ".config" / "myapp", "myapp.toml")
-    plan = Discovery("myapp", path=(), user_config=True).plan(
-        environ={"HOME": str(home)}, cwd=tmp_path, platform="linux"
-    )
+    environ = {
+        "HOME": str(home),
+        "USERPROFILE": str(home),
+        "LOCALAPPDATA": str(home / "AppData" / "Local"),
+    }
+    _write(Path(str(user_config_dirs("myapp", environ=environ)[0])), "myapp.toml")
+    plan = Discovery("myapp", path=(), user_config=True).plan(environ=environ, cwd=tmp_path)
     assert plan.files
     assert plan.files[0][0].parent.name == "myapp"
 

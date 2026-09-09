@@ -14,6 +14,7 @@ Windows and mean the same thing on each.
 
 import sys
 import tempfile
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import timedelta
 from pathlib import Path
@@ -427,9 +428,17 @@ def test_the_env_mapping_round_trips_through_the_real_os(
     assert config.get("db.host") == "from-real-env"
 
 
-def test_the_user_config_directory_is_sane_on_this_platform() -> None:
-    """A thin real-OS check under the fakes, to catch a wiring mistake."""
-    dirs = user_config_dirs("myapp")
+def test_the_user_config_directory_is_sane_on_this_platform(
+    real_environ: Mapping[str, str],
+) -> None:
+    """A thin real-OS check under the fakes, to catch a wiring mistake.
+
+    It reads the environment the process actually started with: `clean_env`
+    empties `os.environ`, and on Windows -- which has no pwd fallback -- an
+    empty environment means the home directory is genuinely unknowable, so an
+    empty answer would be correct and this check would prove nothing.
+    """
+    dirs = user_config_dirs("myapp", environ=real_environ)
     assert dirs
     assert all(d.is_absolute() for d in dirs)
     assert all(d.name == "myapp" for d in dirs)
