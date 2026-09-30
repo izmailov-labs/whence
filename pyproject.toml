@@ -76,7 +76,7 @@ dev = [
   "types-PyYAML>=6.0.12",
   # Ruff has no 1.0 and does not follow semver below it: a minor bump can change
   # which rules fire. Pinned exactly so lint results only change deliberately.
-  "ruff==0.16.7",
+  "ruff==0.16.9",
 ]
 docs = [
   "mkdocs-material>=9.7.7",
